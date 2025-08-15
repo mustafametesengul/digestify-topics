@@ -1,9 +1,11 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import UUID, select
+from sqlmodel import select
 
-from digestify_topics.auth import Auth, get_auth
+from digestify_topics.auth import Auth
+from digestify_topics.auth import fake_get_auth as get_auth
 from digestify_topics.db import AsyncSession, get_session
 from digestify_topics.models import OutboxMessage, Topic, User
 from digestify_topics.queries import HTTPQueries, Queries

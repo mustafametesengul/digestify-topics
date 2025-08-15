@@ -20,7 +20,40 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = None
+from sqlmodel import SQLModel
+
+target_metadata = SQLModel.metadata
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.ext.asyncio.engine import create_async_engine
+
+from digestify_topics.db import create_database_url
+from digestify_topics.models import *
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    postgres_host: str = Field(default=...)
+    postgres_port: int = Field(default=...)
+    postgres_user: str = Field(default=...)
+    postgres_password: str = Field(default=...)
+    postgres_db: str = Field(default=...)
+
+
+def get_database_url() -> str:
+    settings = Settings()
+    url = create_database_url(
+        driver="postgresql+asyncpg",
+        host=settings.postgres_host,
+        port=settings.postgres_port,
+        user=settings.postgres_user,
+        password=settings.postgres_password,
+        db=settings.postgres_db,
+    )
+    return url
+
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -40,9 +73,10 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    database_url = get_database_url()
+
     context.configure(
-        url=url,
+        url=database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -64,12 +98,9 @@ async def run_async_migrations() -> None:
     and associate a connection with the context.
 
     """
+    database_url = get_database_url()
 
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = create_async_engine(database_url)
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

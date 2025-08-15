@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     debug: bool = Field(default=...)
-    jwt_key: str = Field(default=...)
+    jwks_url: str = Field(default=...)
     postgres_host: str = Field(default=...)
     postgres_port: int = Field(default=...)
     postgres_user: str = Field(default=...)
@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     redis_host: str = Field(default=...)
     redis_port: int = Field(default=...)
     redis_password: str = Field(default=...)
+    openai_api_key: str = Field(default=...)
 
 
 _settings = Settings()
