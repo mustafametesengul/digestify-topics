@@ -1,11 +1,15 @@
 from datetime import datetime, timezone
+from typing import TypeVar
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlmodel import Field, SQLModel
 
+T = TypeVar("T", bound=BaseModel)
 
-class BaseModel(SQLModel):
+
+class Entity(SQLModel):
     id: UUID = Field(primary_key=True, default_factory=uuid4)
     discarded: bool = Field(nullable=False, index=True, default=False)
     created_at: datetime = Field(
@@ -30,7 +34,7 @@ class BaseModel(SQLModel):
         self.version += 1
 
 
-class Topic(BaseModel, table=True):
+class Topic(Entity, table=True):
     name: str = Field(nullable=False)
     description: str = Field(nullable=False)
     user_id: UUID = Field(nullable=False, index=True)
@@ -39,11 +43,11 @@ class Topic(BaseModel, table=True):
     image_uri: str | None = Field(nullable=True, default=None)
 
 
-class User(BaseModel, table=True):
+class User(Entity, table=True):
     created_topic_count: int = Field(nullable=False, index=True, default=0)
 
 
-class OutboxMessage(SQLModel):
+class Outbox(SQLModel, table=True):
     id: UUID = Field(primary_key=True, default_factory=uuid4)
     type: str = Field(nullable=False, index=True)
     entity: str | None = Field(nullable=True, index=True)
@@ -56,21 +60,22 @@ class OutboxMessage(SQLModel):
     )
     version: int | None = Field(nullable=True, index=True)
 
+    @classmethod
     def from_payload(
         cls,
-        payload: BaseModel,
-        version: str | None = None,
+        payload: T,
+        version: int | None = None,
         entity: str | None = None,
-    ) -> "OutboxMessage":
+    ) -> "Outbox":
         return cls(
-            type=payload.__name__,
+            type=payload.__class__.__name__,
             entity=entity,
             payload=payload.model_dump(mode="json"),
             version=version,
         )
 
 
-class HandlerLog(SQLModel):
+class Handler(SQLModel):
     message_id: UUID = Field(primary_key=True)
     handler_name: str = Field(primary_key=True)
     created_at: datetime = Field(

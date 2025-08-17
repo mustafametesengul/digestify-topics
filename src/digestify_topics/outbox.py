@@ -1,19 +1,18 @@
 import asyncio
 import inspect
 import logging
-from typing import Awaitable, Callable, ParamSpec, Type, TypeVar, get_type_hints
+from typing import Awaitable, Callable, ParamSpec, TypeVar, cast, get_type_hints
 
 from pydantic import BaseModel
 from sqlmodel import col, delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from digestify_topics.db import get_engine
-from digestify_topics.models import HandlerLog, OutboxMessage
+from digestify_topics.models import Handler, Outbox
 from digestify_topics.stream import get_redis
 
 P = ParamSpec("P")
 R = TypeVar("R")
-T = TypeVar("T", bound=BaseModel)
 
 AsyncFunction = Callable[P, Awaitable[R]]
 
@@ -40,8 +39,8 @@ class MessagePublisher:
 
         async with AsyncSession(engine) as session:
             statement = (
-                select(OutboxMessage)
-                .order_by(col(OutboxMessage.created_at))
+                select(Outbox)
+                .order_by(col(Outbox.created_at))
                 .limit(limit)
                 .with_for_update(skip_locked=True)
             )
@@ -56,11 +55,8 @@ class MessagePublisher:
                 )
                 await redis.xadd(STREAM_NAME, {"data": redis_message.model_dump_json()})
 
-            message_ids = [message.id for message in messages]
-            statement = delete(OutboxMessage).where(
-                col(OutboxMessage.id).in_(message_ids)
-            )
-            await session.exec(statement)
+            for message in messages:
+                await session.delete(message)
 
             await session.commit()
 
@@ -93,7 +89,9 @@ class MessageHandler:
                     f"Handler {func.__name__} is missing a type annotation on its sole argument."
                 )
 
-            MessagePayloadSchema: Type[T] = type_hints[param_name]
+            # Cast the annotated parameter type to a BaseModel subclass so mypy
+            # recognizes classmethod attributes like model_validate_json.
+            MessagePayloadSchema = cast(type[BaseModel], type_hints[param_name])
 
             async def handler_loop() -> None:
                 consumer = func.__name__
@@ -126,7 +124,7 @@ class MessageHandler:
                         async with AsyncSession(self._engine) as session:
                             await func(payload, session)
 
-                            handler_log = HandlerLog(
+                            handler_log = Handler(
                                 message_id=redis_message.id,
                                 handler_name=func.__name__,
                             )

@@ -7,9 +7,10 @@ from sqlmodel import select
 from digestify_topics.auth import Auth
 from digestify_topics.auth import fake_get_auth as get_auth
 from digestify_topics.db import AsyncSession, get_session
-from digestify_topics.models import OutboxMessage, Topic, User
-from digestify_topics.queries import HTTPQueries, Queries
-from digestify_topics.schemas import Locale, TopicCreated, TopicDeleted, TopicUpdated
+from digestify_topics.models import Outbox, Topic, User
+from digestify_topics.queries import MockQueries as HTTPQueries
+from digestify_topics.queries import Queries
+from digestify_topics.schemas import TopicCreated, TopicDeleted
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ async def create_topic(
     name: str,
     description: str,
     is_public: bool,
-    locale: Locale,
+    locale: str,
     image_uri: str | None,
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -61,7 +62,7 @@ async def create_topic(
 
     topic.increment_version()
 
-    message = OutboxMessage.from_payload(
+    message = Outbox.from_payload(
         TopicCreated(topic_id=topic.id, user_id=user.id),
         entity="topic",
         version=topic.version,
@@ -116,7 +117,7 @@ async def delete_topic(
     topic.discarded = True
     topic.increment_version()
 
-    message = OutboxMessage.from_payload(
+    message = Outbox.from_payload(
         TopicDeleted(topic_id=topic.id, user_id=user.id),
         entity="topic",
         version=topic.version,
@@ -124,56 +125,6 @@ async def delete_topic(
     session.add(message)
 
     await session.commit()
-
-
-@router.patch("/topics/{topic_id}", response_model=Topic)
-async def update_topic(
-    topic_id: UUID,
-    auth: Annotated[Auth, Depends(get_auth)],
-    session: Annotated[AsyncSession, Depends(get_session)],
-    name: str | None = None,
-    description: str | None = None,
-    is_public: bool | None = None,
-    locale: Locale | None = None,
-    image_uri: str | None = None,
-) -> Topic:
-    topic = (
-        await session.exec(select(Topic).where(Topic.id == topic_id).with_for_update())
-    ).one_or_none()
-    if topic is None or topic.discarded or topic.user_id != auth.id:
-        raise HTTPException(status_code=404, detail="Topic not found")
-
-    if name is not None:
-        topic.name = name
-    if description is not None:
-        topic.description = description
-    if is_public is not None:
-        topic.is_public = is_public
-    if locale is not None:
-        topic.locale = locale
-    if image_uri is not None:
-        topic.image_uri = image_uri
-
-    topic.increment_version()
-
-    message = OutboxMessage.from_payload(
-        TopicUpdated(
-            topic_id=topic.id,
-            user_id=topic.user_id,
-            name=topic.name,
-            description=topic.description,
-            is_public=topic.is_public,
-            locale=topic.locale,
-            image_uri=topic.image_uri,
-        ),
-        entity="topic",
-        version=topic.version,
-    )
-    session.add(message)
-
-    await session.commit()
-
-    return topic
 
 
 @router.get("/users/{user_id}", response_model=User)
