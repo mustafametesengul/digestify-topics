@@ -25,7 +25,7 @@ async def create_topic(
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
     queries: Annotated[Queries, Depends(HTTPQueries)],
-) -> None:
+) -> Topic:
     user = (
         await session.exec(select(User).where(User.id == auth.id).with_for_update())
     ).one_or_none()
@@ -71,8 +71,11 @@ async def create_topic(
 
     await session.commit()
 
+    await session.refresh(topic)
+    return topic
 
-@router.get("/topics/{topic_id}", response_model=Topic)
+
+@router.get("/topics/{topic_id}")
 async def get_topic_by_id(
     topic_id: UUID,
     auth: Annotated[Auth, Depends(get_auth)],
@@ -127,7 +130,7 @@ async def delete_topic(
     await session.commit()
 
 
-@router.get("/users/{user_id}", response_model=User)
+@router.get("/users/{user_id}")
 async def get_user_by_id(
     user_id: UUID,
     auth: Annotated[Auth, Depends(get_auth)],
