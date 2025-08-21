@@ -1,12 +1,9 @@
 from datetime import datetime, timezone
-from typing import TypeVar
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlmodel import Field, SQLModel
-
-T = TypeVar("T", bound=BaseModel)
 
 
 class Entity(SQLModel):
@@ -63,7 +60,7 @@ class Outbox(SQLModel, table=True):
     @classmethod
     def from_payload(
         cls,
-        payload: T,
+        payload: BaseModel,
         version: int | None = None,
         entity: str | None = None,
     ) -> "Outbox":
@@ -76,7 +73,7 @@ class Outbox(SQLModel, table=True):
 
 
 class Handler(SQLModel):
-    message_id: UUID = Field(primary_key=True)
+    message_id: str = Field(primary_key=True)
     handler_name: str = Field(primary_key=True)
     created_at: datetime = Field(
         nullable=False,

@@ -34,10 +34,7 @@ class MessagePublisher:
         self._tasks: list[asyncio.Task] = []
 
     async def _publish_messages(self, limit: int = 10) -> None:
-        engine = self._engine
-        redis = self._redis
-
-        async with AsyncSession(engine) as session:
+        async with AsyncSession(self._engine) as session:
             statement = (
                 select(Outbox)
                 .order_by(col(Outbox.created_at))
@@ -53,12 +50,15 @@ class MessagePublisher:
                     type=message.__class__.__name__,
                     payload=message.model_dump_json(),
                 )
-                await redis.xadd(STREAM_NAME, {"data": redis_message.model_dump_json()})
+                await self._redis.xadd(
+                    STREAM_NAME, {"data": redis_message.model_dump_json()}
+                )
 
             for message in messages:
                 await session.delete(message)
 
             await session.commit()
+        await asyncio.sleep(1)
 
     async def start(self, publisher_count: int = 1) -> None:
         for _ in range(publisher_count):
@@ -89,9 +89,14 @@ class MessageHandler:
                     f"Handler {func.__name__} is missing a type annotation on its sole argument."
                 )
 
-            # Cast the annotated parameter type to a BaseModel subclass so mypy
-            # recognizes classmethod attributes like model_validate_json.
-            MessagePayloadSchema = cast(type[BaseModel], type_hints[param_name])
+            MessagePayloadSchema = type_hints[param_name]
+            if not (
+                isinstance(MessagePayloadSchema, type)
+                and issubclass(MessagePayloadSchema, BaseModel)
+            ):
+                raise TypeError(
+                    f"{MessagePayloadSchema} must be a subclass of BaseModel"
+                )
 
             async def handler_loop() -> None:
                 consumer = func.__name__
