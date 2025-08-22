@@ -31,7 +31,7 @@ STREAM_NAME = "digestify_topics"
 class RedisMessage(BaseModel):
     id: str
     type: str
-    payload: str
+    payload: dict[str, Any]
 
 
 class MessagePublisher:
@@ -57,8 +57,8 @@ class MessagePublisher:
                 for message in messages:
                     redis_message = RedisMessage(
                         id=str(message.id),
-                        type=message.__class__.__name__,
-                        payload=message.model_dump_json(),
+                        type=message.type,
+                        payload=message.payload,
                     )
                     await self._redis.xadd(
                         STREAM_NAME, {"data": redis_message.model_dump_json()}
@@ -82,13 +82,10 @@ class MessagePublisher:
 
 
 class MessageHandler:
-    # Handlers are zero-arg async callables returning a coroutine that resolves to None
     _handlers: dict[str, Callable[[], Coroutine[Any, Any, None]]]
     _tasks: list[asyncio.Task[None]]
 
     def __init__(self) -> None:
-        self._redis = get_redis()
-        self._engine = get_engine()
         self._handlers = {}
         self._tasks = []
 
@@ -114,34 +111,39 @@ class MessageHandler:
                 )
 
             async def handler() -> None:
+                redis = get_redis()
+                engine = get_engine()
+
                 consumer = func.__name__
                 last_message_id_key = f"last_message_id:{STREAM_NAME}:{consumer}"
-                last_message_id_value = await self._redis.get(last_message_id_key)
+                last_message_id_value = await redis.get(last_message_id_key)
 
                 last_message_id = "0"
                 if last_message_id_value:
                     last_message_id = bytes(last_message_id_value).decode()
 
                 while True:
-                    response = await self._redis.xread({STREAM_NAME: last_message_id})
-
+                    response = await redis.xread(
+                        {STREAM_NAME: last_message_id}, block=1000, count=1
+                    )
                     if not response:
                         continue
 
-                    message_id, message_data = response[1][0]
-
+                    message_id, message_data = response[0][1][0]
                     redis_message_raw = bytes(message_data[b"data"]).decode()
 
                     redis_message = RedisMessage.model_validate_json(redis_message_raw)
                     if redis_message.type != MessagePayloadSchema.__name__:
+                        await redis.set(last_message_id_key, message_id)
+                        last_message_id = message_id
                         continue
 
-                    payload = MessagePayloadSchema.model_validate_json(
-                        redis_message.payload
-                    )
-
                     try:
-                        async with AsyncSession(self._engine) as session:
+                        payload = MessagePayloadSchema.model_validate(
+                            redis_message.payload
+                        )
+
+                        async with AsyncSession(engine) as session:
                             await func(payload, session)
 
                             handler_log = Handler(
@@ -154,7 +156,7 @@ class MessageHandler:
                         logger.exception(f"Error processing event {e}")
                         raise e
 
-                    await self._redis.set(last_message_id_key, message_id)
+                    await redis.set(last_message_id_key, message_id)
                     last_message_id = message_id
 
             self._handlers[MessagePayloadSchema.__name__] = handler
@@ -165,7 +167,6 @@ class MessageHandler:
 
     def start(self) -> None:
         for handler in self._handlers.values():
-            # handler() is a coroutine; create a Task[None] for it
             task: asyncio.Task[None] = asyncio.create_task(handler())
             self._tasks.append(task)
 

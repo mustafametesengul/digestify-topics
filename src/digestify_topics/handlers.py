@@ -8,4 +8,4 @@ handlers = MessageHandler()
 
 @handlers.register()
 async def index_topic(payload: TopicCreated, session: AsyncSession):
-    pass
+    print(f"This is a message: {payload}")

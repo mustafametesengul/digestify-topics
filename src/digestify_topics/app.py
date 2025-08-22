@@ -5,7 +5,8 @@ from fastapi import FastAPI
 
 from digestify_topics.ai import dispose_openai, initialize_openai
 from digestify_topics.db import dispose_engine, initialize_engine
-from digestify_topics.outbox import MessageHandler, MessagePublisher
+from digestify_topics.handlers import handlers
+from digestify_topics.outbox import MessagePublisher
 from digestify_topics.router import router
 from digestify_topics.settings import get_settings
 from digestify_topics.stream import dispose_redis, initialize_redis
@@ -17,14 +18,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     initialize_redis()
     initialize_openai()
     message_publisher = MessagePublisher()
-    message_handler = MessageHandler()
     message_publisher.start()
-    message_handler.start()
+    handlers.start()
     try:
         yield
     finally:
         await message_publisher.stop()
-        await message_handler.stop()
+        await handlers.stop()
         await dispose_openai()
         await dispose_redis()
         await dispose_engine()
