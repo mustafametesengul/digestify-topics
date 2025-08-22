@@ -72,7 +72,7 @@ class Outbox(SQLModel, table=True):
         )
 
 
-class Handler(SQLModel):
+class Handler(SQLModel, table=True):
     message_id: str = Field(primary_key=True)
     handler_name: str = Field(primary_key=True)
     created_at: datetime = Field(

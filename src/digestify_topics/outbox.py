@@ -1,10 +1,18 @@
 import asyncio
 import inspect
 import logging
-from typing import Awaitable, Callable, ParamSpec, TypeVar, cast, get_type_hints
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Coroutine,
+    ParamSpec,
+    TypeVar,
+    get_type_hints,
+)
 
 from pydantic import BaseModel
-from sqlmodel import col, delete, select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from digestify_topics.db import get_engine
@@ -13,7 +21,6 @@ from digestify_topics.stream import get_redis
 
 P = ParamSpec("P")
 R = TypeVar("R")
-
 AsyncFunction = Callable[P, Awaitable[R]]
 
 logger = logging.getLogger(__name__)
@@ -28,42 +35,45 @@ class RedisMessage(BaseModel):
 
 
 class MessagePublisher:
+    _tasks: list[asyncio.Task[None]]
+
     def __init__(self) -> None:
         self._redis = get_redis()
         self._engine = get_engine()
-        self._tasks: list[asyncio.Task] = []
+        self._tasks = []
 
     async def _publish_messages(self, limit: int = 10) -> None:
-        async with AsyncSession(self._engine) as session:
-            statement = (
-                select(Outbox)
-                .order_by(col(Outbox.created_at))
-                .limit(limit)
-                .with_for_update(skip_locked=True)
-            )
-            result = await session.exec(statement)
-            messages = result.all()
-
-            for message in messages:
-                redis_message = RedisMessage(
-                    id=str(message.id),
-                    type=message.__class__.__name__,
-                    payload=message.model_dump_json(),
+        while True:
+            async with AsyncSession(self._engine) as session:
+                statement = (
+                    select(Outbox)
+                    .order_by(col(Outbox.created_at))
+                    .limit(limit)
+                    .with_for_update(skip_locked=True)
                 )
-                await self._redis.xadd(
-                    STREAM_NAME, {"data": redis_message.model_dump_json()}
-                )
+                result = await session.exec(statement)
+                messages = result.all()
 
-            for message in messages:
-                await session.delete(message)
+                for message in messages:
+                    redis_message = RedisMessage(
+                        id=str(message.id),
+                        type=message.__class__.__name__,
+                        payload=message.model_dump_json(),
+                    )
+                    await self._redis.xadd(
+                        STREAM_NAME, {"data": redis_message.model_dump_json()}
+                    )
 
-            await session.commit()
-        await asyncio.sleep(1)
+                for message in messages:
+                    await session.delete(message)
 
-    async def start(self, publisher_count: int = 1) -> None:
+                await session.commit()
+            await asyncio.sleep(1)
+
+    def start(self, publisher_count: int = 1) -> None:
         for _ in range(publisher_count):
-            self._tasks.append(asyncio.create_task(self._publish_messages()))
-        await asyncio.gather(*self._tasks)
+            task: asyncio.Task[None] = asyncio.create_task(self._publish_messages())
+            self._tasks.append(task)
 
     async def stop(self) -> None:
         for task in self._tasks:
@@ -72,10 +82,15 @@ class MessagePublisher:
 
 
 class MessageHandler:
+    # Handlers are zero-arg async callables returning a coroutine that resolves to None
+    _handlers: dict[str, Callable[[], Coroutine[Any, Any, None]]]
+    _tasks: list[asyncio.Task[None]]
+
     def __init__(self) -> None:
         self._redis = get_redis()
         self._engine = get_engine()
-        self._tasks: list[asyncio.Task] = []
+        self._handlers = {}
+        self._tasks = []
 
     def register(self) -> Callable[[AsyncFunction], AsyncFunction]:
         def decorator(func: AsyncFunction) -> AsyncFunction:
@@ -98,7 +113,7 @@ class MessageHandler:
                     f"{MessagePayloadSchema} must be a subclass of BaseModel"
                 )
 
-            async def handler_loop() -> None:
+            async def handler() -> None:
                 consumer = func.__name__
                 last_message_id_key = f"last_message_id:{STREAM_NAME}:{consumer}"
                 last_message_id_value = await self._redis.get(last_message_id_key)
@@ -142,14 +157,17 @@ class MessageHandler:
                     await self._redis.set(last_message_id_key, message_id)
                     last_message_id = message_id
 
-            self._tasks.append(asyncio.create_task(handler_loop()))
+            self._handlers[MessagePayloadSchema.__name__] = handler
 
             return func
 
         return decorator
 
-    async def start(self) -> None:
-        await asyncio.gather(*self._tasks)
+    def start(self) -> None:
+        for handler in self._handlers.values():
+            # handler() is a coroutine; create a Task[None] for it
+            task: asyncio.Task[None] = asyncio.create_task(handler())
+            self._tasks.append(task)
 
     async def stop(self) -> None:
         for task in self._tasks:

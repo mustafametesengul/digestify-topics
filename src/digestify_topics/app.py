@@ -18,8 +18,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     initialize_openai()
     message_publisher = MessagePublisher()
     message_handler = MessageHandler()
-    await message_publisher.start()
-    await message_handler.start()
+    message_publisher.start()
+    message_handler.start()
     try:
         yield
     finally:
