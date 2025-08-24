@@ -7,7 +7,7 @@ from sqlmodel import select
 from digestify_topics.auth import Auth
 from digestify_topics.auth import fake_get_auth as get_auth
 from digestify_topics.db import AsyncSession, get_session
-from digestify_topics.models import Outbox, Topic, User
+from digestify_topics.models import OutboxMessage, Topic, User
 from digestify_topics.queries import MockQueries as HTTPQueries
 from digestify_topics.queries import Queries
 from digestify_topics.schemas import TopicCreated, TopicDeleted
@@ -62,7 +62,7 @@ async def create_topic(
 
     topic.increment_version()
 
-    message = Outbox.from_payload(
+    message = OutboxMessage.from_payload(
         TopicCreated(topic_id=topic.id, user_id=user.id),
         entity="topic",
         version=topic.version,
@@ -120,7 +120,7 @@ async def delete_topic(
     topic.discarded = True
     topic.increment_version()
 
-    message = Outbox.from_payload(
+    message = OutboxMessage.from_payload(
         TopicDeleted(topic_id=topic.id, user_id=user.id),
         entity="topic",
         version=topic.version,

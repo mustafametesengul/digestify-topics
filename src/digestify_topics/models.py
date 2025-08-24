@@ -44,7 +44,7 @@ class User(Entity, table=True):
     created_topic_count: int = Field(nullable=False, index=True, default=0)
 
 
-class Outbox(SQLModel, table=True):
+class OutboxMessage(SQLModel, table=True):
     id: UUID = Field(primary_key=True, default_factory=uuid4)
     type: str = Field(nullable=False, index=True)
     entity: str | None = Field(nullable=True, index=True)
@@ -63,7 +63,7 @@ class Outbox(SQLModel, table=True):
         payload: BaseModel,
         version: int | None = None,
         entity: str | None = None,
-    ) -> "Outbox":
+    ) -> "OutboxMessage":
         return cls(
             type=payload.__class__.__name__,
             entity=entity,
@@ -72,7 +72,7 @@ class Outbox(SQLModel, table=True):
         )
 
 
-class Handler(SQLModel, table=True):
+class HandledMessage(SQLModel, table=True):
     message_id: str = Field(primary_key=True)
     handler_name: str = Field(primary_key=True)
     created_at: datetime = Field(

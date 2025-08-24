@@ -12,82 +12,47 @@ from typing import (
 )
 
 from pydantic import BaseModel
-from sqlmodel import col, select
+from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio.engine import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from digestify_topics.db import get_engine
-from digestify_topics.models import Handler, Outbox
-from digestify_topics.stream import get_redis
+from digestify_topics.models import HandledMessage
+from digestify_topics.schemas import Message
 
 P = ParamSpec("P")
 R = TypeVar("R")
 AsyncFunction = Callable[P, Awaitable[R]]
 
+
 logger = logging.getLogger(__name__)
 
-STREAM_NAME = "digestify_topics"
 
-
-class RedisMessage(BaseModel):
-    id: str
-    type: str
-    payload: dict[str, Any]
-
-
-class MessagePublisher:
-    _tasks: list[asyncio.Task[None]]
-
-    def __init__(self) -> None:
-        self._redis = get_redis()
-        self._engine = get_engine()
-        self._tasks = []
-
-    async def _publish_messages(self, limit: int = 10) -> None:
-        while True:
-            async with AsyncSession(self._engine) as session:
-                statement = (
-                    select(Outbox)
-                    .order_by(col(Outbox.created_at))
-                    .limit(limit)
-                    .with_for_update(skip_locked=True)
-                )
-                result = await session.exec(statement)
-                messages = result.all()
-
-                for message in messages:
-                    redis_message = RedisMessage(
-                        id=str(message.id),
-                        type=message.type,
-                        payload=message.payload,
-                    )
-                    await self._redis.xadd(
-                        STREAM_NAME, {"data": redis_message.model_dump_json()}
-                    )
-
-                for message in messages:
-                    await session.delete(message)
-
-                await session.commit()
-            await asyncio.sleep(1)
-
-    def start(self, publisher_count: int = 1) -> None:
-        for _ in range(publisher_count):
-            task: asyncio.Task[None] = asyncio.create_task(self._publish_messages())
-            self._tasks.append(task)
-
-    async def stop(self) -> None:
-        for task in self._tasks:
-            task.cancel()
-        await asyncio.gather(*self._tasks, return_exceptions=True)
-
-
-class MessageHandler:
+class MessageDispatcher:
     _handlers: dict[str, Callable[[], Coroutine[Any, Any, None]]]
     _tasks: list[asyncio.Task[None]]
 
-    def __init__(self) -> None:
+    def __init__(self, stream: str) -> None:
         self._handlers = {}
         self._tasks = []
+        self._stream = stream
+        self._engine: AsyncEngine | None = None
+        self._redis: Redis | None = None
+
+    def _get_redis(self) -> Redis:
+        if self._redis is None:
+            raise ValueError("Redis has not been set.")
+        return self._redis
+
+    def _get_engine(self) -> AsyncEngine:
+        if self._engine is None:
+            raise ValueError("Engine has not been set.")
+        return self._engine
+
+    def set_redis(self, redis: Redis) -> None:
+        self._redis = redis
+
+    def set_engine(self, engine: AsyncEngine) -> None:
+        self._engine = engine
 
     def register(self) -> Callable[[AsyncFunction], AsyncFunction]:
         def decorator(func: AsyncFunction) -> AsyncFunction:
@@ -111,11 +76,11 @@ class MessageHandler:
                 )
 
             async def handler() -> None:
-                redis = get_redis()
-                engine = get_engine()
+                redis = self._get_redis()
+                engine = self._get_engine()
 
                 consumer = func.__name__
-                last_message_id_key = f"last_message_id:{STREAM_NAME}:{consumer}"
+                last_message_id_key = f"last_message_id:{self._stream}:{consumer}"
                 last_message_id_value = await redis.get(last_message_id_key)
 
                 last_message_id = "0"
@@ -124,7 +89,7 @@ class MessageHandler:
 
                 while True:
                     response = await redis.xread(
-                        {STREAM_NAME: last_message_id}, block=1000, count=1
+                        {self._stream: last_message_id}, block=1000, count=1
                     )
                     if not response:
                         continue
@@ -132,7 +97,7 @@ class MessageHandler:
                     message_id, message_data = response[0][1][0]
                     redis_message_raw = bytes(message_data[b"data"]).decode()
 
-                    redis_message = RedisMessage.model_validate_json(redis_message_raw)
+                    redis_message = Message.model_validate_json(redis_message_raw)
                     if redis_message.type != MessagePayloadSchema.__name__:
                         await redis.set(last_message_id_key, message_id)
                         last_message_id = message_id
@@ -146,7 +111,7 @@ class MessageHandler:
                         async with AsyncSession(engine) as session:
                             await func(payload, session)
 
-                            handler_log = Handler(
+                            handler_log = HandledMessage(
                                 message_id=redis_message.id,
                                 handler_name=func.__name__,
                             )

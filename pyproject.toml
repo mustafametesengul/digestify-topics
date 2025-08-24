@@ -39,7 +39,3 @@ dev = [
 addopts = "--mypy"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-filterwarnings = [
-    "ignore:Accessing the 'model_fields' attribute on the instance is deprecated.",
-    "ignore:Call to deprecated close.*:DeprecationWarning"
-]

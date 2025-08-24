@@ -1,6 +1,6 @@
 from redis.asyncio import Redis
 
-from .settings import get_settings
+from digestify_topics.settings import get_settings
 
 _redis: Redis | None = None
 
