@@ -131,6 +131,8 @@ class MessageDispatcher:
         return decorator
 
     def start(self) -> None:
+        if self._engine is None or self._redis is None:
+            raise ValueError("Engine and Redis must be set before starting.")
         for handler in self._handlers.values():
             task: asyncio.Task[None] = asyncio.create_task(handler())
             self._tasks.append(task)
