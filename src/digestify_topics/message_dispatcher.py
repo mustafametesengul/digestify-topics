@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import logging
+import uuid
 from typing import (
     Any,
     Awaitable,
@@ -13,6 +14,7 @@ from typing import (
 
 from pydantic import BaseModel
 from redis.asyncio import Redis
+from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio.engine import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -79,17 +81,29 @@ class MessageDispatcher:
                 redis = self._get_redis()
                 engine = self._get_engine()
 
-                consumer = func.__name__
-                last_message_id_key = f"last_message_id:{self._stream}:{consumer}"
-                last_message_id_value = await redis.get(last_message_id_key)
+                consumer_group = func.__name__
+                consumer_name = f"{consumer_group}:{uuid.uuid4().hex[:8]}"
 
-                last_message_id = "0"
-                if last_message_id_value:
-                    last_message_id = bytes(last_message_id_value).decode()
+                # Ensure the consumer group exists; create it if not.
+                try:
+                    await redis.xgroup_create(
+                        name=self._stream,
+                        groupname=consumer_group,
+                        id="$",
+                        mkstream=True,
+                    )
+                except ResponseError as e:
+                    # Ignore if the consumer group already exists
+                    if "BUSYGROUP" not in str(e):
+                        raise
 
                 while True:
-                    response = await redis.xread(
-                        {self._stream: last_message_id}, block=1000, count=1
+                    response = await redis.xreadgroup(
+                        groupname=consumer_group,
+                        consumername=consumer_name,
+                        streams={self._stream: ">"},
+                        block=1000,
+                        count=1,
                     )
                     if not response:
                         continue
@@ -99,8 +113,8 @@ class MessageDispatcher:
 
                     redis_message = Message.model_validate_json(redis_message_raw)
                     if redis_message.type != MessagePayloadSchema.__name__:
-                        await redis.set(last_message_id_key, message_id)
-                        last_message_id = message_id
+                        # Not our message type; ack and continue so this group doesn't get stuck.
+                        await redis.xack(self._stream, consumer_group, message_id)
                         continue
 
                     try:
@@ -117,12 +131,11 @@ class MessageDispatcher:
                             )
                             session.add(handler_log)
                             await session.commit()
+                        # Ack only after successful handling and DB commit
+                        await redis.xack(self._stream, consumer_group, message_id)
                     except Exception as e:
                         logger.exception(f"Error processing event {e}")
                         raise e
-
-                    await redis.set(last_message_id_key, message_id)
-                    last_message_id = message_id
 
             self._handlers[MessagePayloadSchema.__name__] = handler
 
