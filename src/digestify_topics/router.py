@@ -4,13 +4,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
-from digestify_topics.auth import Auth
-from digestify_topics.auth import fake_get_auth as get_auth
+from digestify_topics.auth import Auth, get_auth
 from digestify_topics.db import AsyncSession, get_session
+from digestify_topics.messages import TopicCreated, TopicDeleted
 from digestify_topics.models import OutboxMessage, Topic, User
-from digestify_topics.queries import MockQueries as HTTPQueries
-from digestify_topics.queries import Queries
-from digestify_topics.schemas import TopicCreated, TopicDeleted
+from digestify_topics.queries import HTTPQueries, Queries
+from digestify_topics.schemas import TopicRespone, TopicsResponse, UserResponse
 
 router = APIRouter()
 
@@ -25,15 +24,11 @@ async def create_topic(
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
     queries: Annotated[Queries, Depends(HTTPQueries)],
-) -> Topic:
+) -> TopicRespone:
     user = (
         await session.exec(select(User).where(User.id == auth.id).with_for_update())
     ).one_or_none()
-    if user is None:
-        user = User(id=auth.id)
-        session.add(user)
-
-    if user.discarded:
+    if user is None or user.discarded:
         raise HTTPException(status_code=404, detail="User not found")
 
     user.created_topic_count += 1
@@ -58,9 +53,8 @@ async def create_topic(
         image_uri=image_uri,
         user_id=user.id,
     )
-    session.add(topic)
-
     topic.increment_version()
+    session.add(topic)
 
     message = OutboxMessage.from_payload(
         TopicCreated(topic_id=topic.id, user_id=user.id),
@@ -72,7 +66,7 @@ async def create_topic(
     await session.commit()
 
     await session.refresh(topic)
-    return topic
+    return TopicRespone.model_validate(topic.model_dump())
 
 
 @router.get("/topics/{topic_id}")
@@ -80,7 +74,7 @@ async def get_topic_by_id(
     topic_id: UUID,
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> Topic:
+) -> TopicRespone:
     topic = (
         await session.exec(select(Topic).where(Topic.id == topic_id))
     ).one_or_none()
@@ -91,7 +85,7 @@ async def get_topic_by_id(
     ):
         raise HTTPException(status_code=404, detail="Topic not found")
 
-    return topic
+    return TopicRespone.model_validate(topic.model_dump())
 
 
 @router.delete("/topics/{topic_id}", status_code=204)
@@ -130,14 +124,52 @@ async def delete_topic(
     await session.commit()
 
 
-@router.get("/users/{user_id}")
-async def get_user_by_id(
-    user_id: UUID,
+@router.get("/my_topics")
+async def get_my_topics(
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> User:
-    user = (await session.exec(select(User).where(User.id == user_id))).one_or_none()
-    if user is None or user.discarded or user.id != auth.id:
+) -> TopicsResponse:
+    user = (await session.exec(select(User).where(User.id == auth.id))).one_or_none()
+    if user is None or user.discarded:
         raise HTTPException(status_code=404, detail="User not found")
+    topics = (await session.exec(select(Topic).where(Topic.user_id == auth.id))).all()
+    topics = list(filter(lambda t: not t.discarded, topics))
+    topic_responses = [
+        TopicRespone.model_validate(topic.model_dump()) for topic in topics
+    ]
+    return TopicsResponse(topics=topic_responses)
 
-    return user
+
+@router.get("/me")
+async def get_my_user(
+    auth: Annotated[Auth, Depends(get_auth)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UserResponse:
+    user = (await session.exec(select(User).where(User.id == auth.id))).one_or_none()
+    if user is None or user.discarded:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserResponse.model_validate(user.model_dump())
+
+
+@router.post("/me")
+async def create_my_user(
+    auth: Annotated[Auth, Depends(get_auth)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UserResponse:
+    user = (
+        await session.exec(select(User).where(User.id == auth.id).with_for_update())
+    ).one_or_none()
+    if user is not None and not user.discarded:
+        raise HTTPException(status_code=400, detail="User already exists")
+
+    if user is None:
+        user = User(id=auth.id)
+        session.add(user)
+    else:
+        user.discarded = False
+    user.increment_version()
+
+    await session.commit()
+    await session.refresh(user)
+
+    return UserResponse.model_validate(user.model_dump())

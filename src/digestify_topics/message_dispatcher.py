@@ -18,8 +18,8 @@ from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio.engine import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from digestify_topics.messages import Message
 from digestify_topics.models import HandledMessage
-from digestify_topics.schemas import Message
 
 P = ParamSpec("P")
 R = TypeVar("R")

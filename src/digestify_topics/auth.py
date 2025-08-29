@@ -85,5 +85,5 @@ def get_auth(
     return auth
 
 
-def fake_get_auth() -> Auth:
+def mock_get_auth() -> Auth:
     return Auth(id=UUID("12345678-1234-5678-1234-567812345678"), is_anonymous=False)

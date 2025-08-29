@@ -4,9 +4,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from digestify_topics.ai import dispose_openai, initialize_openai
+from digestify_topics.auth import get_auth, mock_get_auth
 from digestify_topics.db import dispose_engine, get_engine, initialize_engine
 from digestify_topics.handlers import dispatcher
 from digestify_topics.outbox_publisher import OutboxPublisher
+from digestify_topics.queries import HTTPQueries, MockQueries
 from digestify_topics.router import router
 from digestify_topics.settings import get_settings
 from digestify_topics.stream import (
@@ -50,6 +52,10 @@ def create_app() -> FastAPI:
         debug=settings.debug,
     )
     app.include_router(router)
+
+    if settings.debug:
+        app.dependency_overrides[get_auth] = mock_get_auth
+        app.dependency_overrides[HTTPQueries] = MockQueries
 
     return app
 

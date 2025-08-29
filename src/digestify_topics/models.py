@@ -32,6 +32,7 @@ class Entity(SQLModel):
 
 
 class Topic(Entity, table=True):
+    __tablename__ = "topics"
     name: str = Field(nullable=False)
     description: str = Field(nullable=False)
     user_id: UUID = Field(nullable=False, index=True)
@@ -41,10 +42,12 @@ class Topic(Entity, table=True):
 
 
 class User(Entity, table=True):
+    __tablename__ = "users"
     created_topic_count: int = Field(nullable=False, index=True, default=0)
 
 
 class OutboxMessage(SQLModel, table=True):
+    __tablename__ = "outbox_messages"
     id: UUID = Field(primary_key=True, default_factory=uuid4)
     type: str = Field(nullable=False, index=True)
     entity: str | None = Field(nullable=True, index=True)
@@ -73,6 +76,7 @@ class OutboxMessage(SQLModel, table=True):
 
 
 class HandledMessage(SQLModel, table=True):
+    __tablename__ = "handled_messages"
     message_id: str = Field(primary_key=True)
     handler_name: str = Field(primary_key=True)
     created_at: datetime = Field(
