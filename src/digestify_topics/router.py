@@ -57,7 +57,7 @@ async def create_topic(
     session.add(topic)
 
     message = OutboxMessage.from_payload(
-        TopicCreated(topic_id=topic.id, user_id=user.id),
+        TopicCreated.model_validate(topic.model_dump()),
         entity="topic",
         version=topic.version,
     )
@@ -140,7 +140,7 @@ async def get_my_topics(
     return TopicsResponse(topics=topic_responses)
 
 
-@router.get("/me")
+@router.get("/my_user")
 async def get_my_user(
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -151,7 +151,7 @@ async def get_my_user(
     return UserResponse.model_validate(user.model_dump())
 
 
-@router.post("/me")
+@router.post("/my_user")
 async def create_my_user(
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
