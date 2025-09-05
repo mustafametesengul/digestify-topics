@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -11,8 +12,15 @@ class Message(BaseModel):
 
 
 class TopicCreated(BaseModel):
-    topic_id: UUID
+    id: UUID
     user_id: UUID
+    name: str
+    description: str
+    is_public: bool
+    locale: str
+    image_uri: str | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class TopicDeleted(BaseModel):
