@@ -68,7 +68,12 @@ def verify_jwt_token(token: str) -> dict:
     public_key = _public_keys[kid]
 
     try:
-        payload = jwt.decode(token, public_key, algorithms=["ES256"])
+        payload = jwt.decode(
+            token,
+            public_key,
+            algorithms=["ES256"],
+            audience="authenticated",
+        )
         return payload
     except InvalidTokenError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")

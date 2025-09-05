@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from digestify_topics.ai import dispose_openai, initialize_openai
-from digestify_topics.auth import get_auth, mock_get_auth
+from digestify_topics.auth import fetch_jwks, get_auth, mock_get_auth
 from digestify_topics.db import dispose_engine, get_engine, initialize_engine
 from digestify_topics.handlers import dispatcher
 from digestify_topics.outbox_publisher import OutboxPublisher
@@ -20,9 +20,13 @@ from digestify_topics.stream import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    settings = get_settings()
     initialize_engine()
     initialize_redis()
     initialize_openai()
+    if not settings.debug:
+        await fetch_jwks()
+
     stream = "digestify_topics"
     message_publisher = OutboxPublisher(
         engine=get_engine(),
@@ -33,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     dispatcher.set_redis(get_redis())
     dispatcher.set_engine(get_engine())
     dispatcher.start()
+
     try:
         yield
     finally:
