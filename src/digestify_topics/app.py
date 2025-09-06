@@ -3,9 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from digestify_topics.ai import dispose_openai, initialize_openai
+from digestify_topics.ai import dispose_openai, init_openai
 from digestify_topics.auth import fetch_jwks, get_auth, mock_get_auth
-from digestify_topics.db import dispose_engine, get_engine, initialize_engine
+from digestify_topics.db import dispose_engine, get_engine, init_engine
 from digestify_topics.handlers import dispatcher
 from digestify_topics.outbox_publisher import OutboxPublisher
 from digestify_topics.queries import HTTPQueries, MockQueries
@@ -14,16 +14,16 @@ from digestify_topics.settings import get_settings
 from digestify_topics.stream import (
     dispose_redis,
     get_redis,
-    initialize_redis,
+    init_redis,
 )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    initialize_engine()
-    initialize_redis()
-    initialize_openai()
+    init_engine()
+    init_redis()
+    init_openai()
     if not settings.debug:
         await fetch_jwks()
 

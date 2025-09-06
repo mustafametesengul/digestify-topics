@@ -16,7 +16,7 @@ class TopicRespone(Entity):
     description: str
     is_public: bool
     locale: str
-    image_uri: str | None
+    image_url: str | None
 
 
 class TopicsResponse(BaseModel):

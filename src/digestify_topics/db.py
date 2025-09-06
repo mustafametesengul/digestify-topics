@@ -20,7 +20,7 @@ def create_database_url(
     return url
 
 
-def initialize_engine() -> None:
+def init_engine() -> None:
     global _engine
     if _engine is not None:
         raise ValueError("Engine has already been initialized.")

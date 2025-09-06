@@ -5,7 +5,7 @@ from digestify_topics.settings import get_settings
 _redis: Redis | None = None
 
 
-def initialize_redis() -> None:
+def init_redis() -> None:
     global _redis
     if _redis is not None:
         raise ValueError("Redis has already been initialized.")

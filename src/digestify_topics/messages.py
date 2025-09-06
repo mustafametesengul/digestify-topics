@@ -18,7 +18,7 @@ class TopicCreated(BaseModel):
     description: str
     is_public: bool
     locale: str
-    image_uri: str | None
+    image_url: str | None
     created_at: datetime
     updated_at: datetime
 

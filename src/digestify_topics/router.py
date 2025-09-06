@@ -20,7 +20,7 @@ async def create_topic(
     description: str,
     is_public: bool,
     locale: str,
-    image_uri: str | None,
+    image_url: str | None,
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
     queries: Annotated[Queries, Depends(HTTPQueries)],
@@ -50,7 +50,7 @@ async def create_topic(
         description=description,
         is_public=is_public,
         locale=str(locale),
-        image_uri=image_uri,
+        image_url=image_url,
         user_id=user.id,
     )
     topic.increment_version()

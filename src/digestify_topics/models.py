@@ -38,7 +38,7 @@ class Topic(Entity, table=True):
     user_id: UUID = Field(nullable=False, index=True)
     is_public: bool = Field(nullable=False, index=True)
     locale: str = Field(nullable=False, index=True)
-    image_uri: str | None = Field(nullable=True, default=None)
+    image_url: str | None = Field(nullable=True, default=None)
 
 
 class User(Entity, table=True):

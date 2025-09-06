@@ -10,7 +10,7 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMENSIONS = 768
 
 
-def initialize_openai() -> None:
+def init_openai() -> None:
     global _openai
     if _openai is not None:
         raise ValueError("OpenAI has already been initialized.")
