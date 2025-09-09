@@ -2,6 +2,7 @@ services:
   web:
     # Build the image from the Dockerfile in the current directory
     build: .
+    image: mustafametesengul/digestify-topics:latest
 
     # Host the FastAPI application on port 8000
     ports:

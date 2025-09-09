@@ -1,2 +1,9 @@
-# Exclude the project virtual environment from image builds
-.venv
+*
+!src/
+!pyproject.toml
+!uv.lock
+!.python-version
+!README.md
+!LICENSE
+!alembic/
+!alembic.ini
