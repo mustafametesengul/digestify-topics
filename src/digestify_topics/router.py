@@ -6,10 +6,15 @@ from sqlmodel import select
 
 from digestify_topics.auth import Auth, get_auth
 from digestify_topics.db import AsyncSession, get_session
-from digestify_topics.messages import TopicCreated, TopicDeleted
 from digestify_topics.models import OutboxMessage, Topic, User
 from digestify_topics.queries import HTTPQueries, Queries
-from digestify_topics.schemas import TopicRespone, TopicsResponse, UserResponse
+from digestify_topics.schemas import (
+    TopicCreated,
+    TopicDeleted,
+    TopicListRead,
+    TopicRead,
+    UserRead,
+)
 
 router = APIRouter()
 
@@ -24,7 +29,7 @@ async def create_topic(
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
     queries: Annotated[Queries, Depends(HTTPQueries)],
-) -> TopicRespone:
+) -> TopicRead:
     user = (
         await session.exec(select(User).where(User.id == auth.id).with_for_update())
     ).one_or_none()
@@ -56,17 +61,16 @@ async def create_topic(
     topic.increment_version()
     session.add(topic)
 
+    topic_read = TopicRead.model_validate(topic.model_dump())
     message = OutboxMessage.from_payload(
-        TopicCreated.model_validate(topic.model_dump()),
-        entity="topic",
-        version=topic.version,
+        TopicCreated(topic=topic_read, version=topic.version),
     )
     session.add(message)
 
     await session.commit()
 
     await session.refresh(topic)
-    return TopicRespone.model_validate(topic.model_dump())
+    return TopicRead.model_validate(topic.model_dump())
 
 
 @router.get("/topics/{topic_id}")
@@ -74,7 +78,7 @@ async def get_topic_by_id(
     topic_id: UUID,
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> TopicRespone:
+) -> TopicRead:
     topic = (
         await session.exec(select(Topic).where(Topic.id == topic_id))
     ).one_or_none()
@@ -85,7 +89,7 @@ async def get_topic_by_id(
     ):
         raise HTTPException(status_code=404, detail="Topic not found")
 
-    return TopicRespone.model_validate(topic.model_dump())
+    return TopicRead.model_validate(topic.model_dump())
 
 
 @router.delete("/topics/{topic_id}", status_code=204)
@@ -115,9 +119,7 @@ async def delete_topic(
     topic.increment_version()
 
     message = OutboxMessage.from_payload(
-        TopicDeleted(topic_id=topic.id, user_id=user.id),
-        entity="topic",
-        version=topic.version,
+        TopicDeleted(id=topic.id, version=topic.version),
     )
     session.add(message)
 
@@ -128,34 +130,32 @@ async def delete_topic(
 async def get_my_topics(
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> TopicsResponse:
+) -> TopicListRead:
     user = (await session.exec(select(User).where(User.id == auth.id))).one_or_none()
     if user is None or user.discarded:
         raise HTTPException(status_code=404, detail="User not found")
     topics = (await session.exec(select(Topic).where(Topic.user_id == auth.id))).all()
     topics = list(filter(lambda t: not t.discarded, topics))
-    topic_responses = [
-        TopicRespone.model_validate(topic.model_dump()) for topic in topics
-    ]
-    return TopicsResponse(topics=topic_responses)
+    topic_responses = [TopicRead.model_validate(topic.model_dump()) for topic in topics]
+    return TopicListRead(topics=topic_responses)
 
 
 @router.get("/my_user")
 async def get_my_user(
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> UserResponse:
+) -> UserRead:
     user = (await session.exec(select(User).where(User.id == auth.id))).one_or_none()
     if user is None or user.discarded:
         raise HTTPException(status_code=404, detail="User not found")
-    return UserResponse.model_validate(user.model_dump())
+    return UserRead.model_validate(user.model_dump())
 
 
 @router.post("/my_user")
 async def create_my_user(
     auth: Annotated[Auth, Depends(get_auth)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> UserResponse:
+) -> UserRead:
     user = (
         await session.exec(select(User).where(User.id == auth.id).with_for_update())
     ).one_or_none()
@@ -172,4 +172,4 @@ async def create_my_user(
     await session.commit()
     await session.refresh(user)
 
-    return UserResponse.model_validate(user.model_dump())
+    return UserRead.model_validate(user.model_dump())

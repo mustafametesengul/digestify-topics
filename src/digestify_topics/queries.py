@@ -24,10 +24,13 @@ class MockQueries(Queries):
 
 
 class HTTPQueries(Queries):
+    def __init__(self):
+        self.base_url = "http://localhost:8000"
+
     @override
     async def check_user_subscription(self, user_id: UUID) -> bool:
         return True
-        # url = f"/subscriptions/{user_id}"
+        # url = f"{self.base_url}/subscriptions/{user_id}"
         # async with aiohttp.ClientSession() as session:
         #     async with session.get(url) as response:
         #         response.raise_for_status()

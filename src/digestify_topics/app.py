@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from digestify_topics.ai import dispose_openai, init_openai
 from digestify_topics.auth import fetch_jwks, get_auth, mock_get_auth
 from digestify_topics.db import dispose_engine, get_engine, init_engine
-from digestify_topics.handlers import dispatcher
+from digestify_topics.handlers import STREAM_NAME, dispatcher
 from digestify_topics.outbox_publisher import OutboxPublisher
 from digestify_topics.queries import HTTPQueries, MockQueries
 from digestify_topics.router import router
@@ -27,11 +27,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not settings.debug:
         await fetch_jwks()
 
-    stream = "digestify_topics"
     message_publisher = OutboxPublisher(
         engine=get_engine(),
         redis=get_redis(),
-        stream=stream,
+        stream=STREAM_NAME,
     )
     message_publisher.start()
     dispatcher.set_redis(get_redis())

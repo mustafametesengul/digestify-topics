@@ -1,16 +1,23 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
 
 
-class Entity(BaseModel):
+class Message(BaseModel):
+    id: str
+    type: str
+    payload: dict[str, Any]
+
+
+class EntityBase(BaseModel):
     id: UUID
     created_at: datetime
     updated_at: datetime
 
 
-class TopicRespone(Entity):
+class TopicRead(EntityBase):
     user_id: UUID
     name: str
     description: str
@@ -19,9 +26,19 @@ class TopicRespone(Entity):
     image_url: str | None
 
 
-class TopicsResponse(BaseModel):
-    topics: list[TopicRespone]
+class TopicListRead(BaseModel):
+    topics: list[TopicRead]
 
 
-class UserResponse(Entity):
+class UserRead(EntityBase):
     created_topic_count: int
+
+
+class TopicCreated(BaseModel):
+    topic: TopicRead
+    version: int
+
+
+class TopicDeleted(BaseModel):
+    id: UUID
+    version: int

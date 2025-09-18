@@ -1,12 +1,13 @@
 import asyncio
+from datetime import datetime, timezone
 
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio.engine import AsyncEngine
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from digestify_topics.messages import Message
 from digestify_topics.models import OutboxMessage
+from digestify_topics.schemas import Message
 
 
 class OutboxPublisher:
@@ -28,7 +29,10 @@ class OutboxPublisher:
             async with AsyncSession(self._engine) as session:
                 statement = (
                     select(OutboxMessage)
-                    .order_by(col(OutboxMessage.created_at))
+                    .where(
+                        col(OutboxMessage.scheduled_at) <= datetime.now(timezone.utc)
+                    )
+                    .order_by(col(OutboxMessage.scheduled_at).asc())
                     .limit(limit)
                     .with_for_update(skip_locked=True)
                 )

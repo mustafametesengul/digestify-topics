@@ -18,8 +18,8 @@ from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio.engine import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from digestify_topics.messages import Message
 from digestify_topics.models import HandledMessage
+from digestify_topics.schemas import Message
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -82,7 +82,7 @@ class MessageDispatcher:
                 engine = self._get_engine()
 
                 consumer_group = func.__name__
-                consumer_name = f"{consumer_group}:{uuid.uuid4().hex[:8]}"
+                consumer_name = str(uuid.uuid4())
 
                 # Ensure the consumer group exists; create it if not.
                 try:
@@ -125,11 +125,12 @@ class MessageDispatcher:
                         async with AsyncSession(engine) as session:
                             await func(payload, session)
 
-                            handler_log = HandledMessage(
+                            handled_message = HandledMessage(
+                                source=self._stream,
                                 message_id=redis_message.id,
                                 handler_name=func.__name__,
                             )
-                            session.add(handler_log)
+                            session.add(handled_message)
                             await session.commit()
                         # Ack only after successful handling and DB commit
                         await redis.xack(self._stream, consumer_group, message_id)
