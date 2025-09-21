@@ -9,8 +9,12 @@ services:
       - "8000:8000"
 
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      alembic:
+        condition: service_completed_successfully
 
     environment:
       POSTGRES_HOST: ${POSTGRES_HOST:-db}
@@ -42,6 +46,26 @@ services:
         - action: rebuild
           path: ./uv.lock
 
+  alembic:
+    image: mustafametesengul/digestify-topics:latest
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    working_dir: /app
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST:-db}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-db}
+    volumes:
+      # Persist generated migration files locally
+      - ./alembic/versions:/app/alembic/versions
+    # Default command runs migrations; override with `--` to pass different alembic args
+    entrypoint: [ "alembic" ]
+    command: [ "upgrade", "head" ]
+
   db:
     image: pgvector/pgvector:pg17
     environment:
@@ -52,13 +76,19 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h 127.0.0.1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
 
   pgweb:
     image: sosedoff/pgweb:latest
     ports:
       - "8081:8081"
     environment:
-      - DATABASE_URL=postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-db}?sslmode=disable
+      - PGWEB_DATABASE_URL=postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-db}?sslmode=disable
     depends_on:
       - db
 

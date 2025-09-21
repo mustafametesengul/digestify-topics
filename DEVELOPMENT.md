@@ -18,6 +18,27 @@ uv run ruff format
 Generate migrations:
 ```
 uv run alembic revision --autogenerate -m "Create initial tables"
+
+docker compose run --rm alembic revision --autogenerate -m "Create initial tables"
+
+```
+
+Note: When using Docker, migration scripts are written to your local repository under `./alembic/versions` (bind-mounted into the container). You can edit them locally and commit as usual.
+
+Common Docker-based Alembic commands:
+```
+# Create a new revision
+docker compose run --rm alembic revision --autogenerate -m "message"
+
+# Apply all migrations
+docker compose run --rm alembic upgrade head
+
+# Roll back one migration
+docker compose run --rm alembic downgrade -1
+
+# See current heads/history
+docker compose run --rm alembic heads
+docker compose run --rm alembic history
 ```
 
 Apply all migrations:

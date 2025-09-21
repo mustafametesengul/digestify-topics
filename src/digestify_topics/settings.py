@@ -18,9 +18,16 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default=...)
 
 
-_settings = Settings()
+_settings: Settings | None = None
 
 
 def get_settings() -> Settings:
     global _settings
+    if _settings is None:
+        raise ValueError("Settings have not been initialized.")
     return _settings
+
+
+def init_settings() -> None:
+    global _settings
+    _settings = Settings()

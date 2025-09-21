@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio.engine import AsyncEngine
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from digestify_topics.models import OutboxMessage
-from digestify_topics.schemas import Message
+from digestify_topics.messaging.models import OutboxMessage
+from digestify_topics.messaging.schemas import Message
 
 
 class OutboxPublisher:

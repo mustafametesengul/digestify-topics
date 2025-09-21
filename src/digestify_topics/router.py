@@ -6,7 +6,8 @@ from sqlmodel import select
 
 from digestify_topics.auth import Auth, get_auth
 from digestify_topics.db import AsyncSession, get_session
-from digestify_topics.models import OutboxMessage, Topic, User
+from digestify_topics.messaging import add_outbox_message
+from digestify_topics.models import Topic, User
 from digestify_topics.queries import HTTPQueries, Queries
 from digestify_topics.schemas import (
     TopicCreated,
@@ -61,12 +62,7 @@ async def create_topic(
     topic.increment_version()
     session.add(topic)
 
-    topic_read = TopicRead.model_validate(topic.model_dump())
-    message = OutboxMessage.from_payload(
-        TopicCreated(topic=topic_read, version=topic.version),
-    )
-    session.add(message)
-
+    add_outbox_message(session, TopicCreated(topic_id=topic.id))
     await session.commit()
 
     await session.refresh(topic)
@@ -118,10 +114,7 @@ async def delete_topic(
     topic.discarded = True
     topic.increment_version()
 
-    message = OutboxMessage.from_payload(
-        TopicDeleted(id=topic.id, version=topic.version),
-    )
-    session.add(message)
+    add_outbox_message(session, TopicDeleted(topic_id=topic.id))
 
     await session.commit()
 

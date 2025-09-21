@@ -28,6 +28,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.ext.asyncio.engine import create_async_engine
 
+import digestify_topics.messaging.models
 import digestify_topics.models
 from digestify_topics.db import create_database_url
 

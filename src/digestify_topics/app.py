@@ -7,10 +7,10 @@ from digestify_topics.ai import dispose_openai, init_openai
 from digestify_topics.auth import fetch_jwks, get_auth, mock_get_auth
 from digestify_topics.db import dispose_engine, get_engine, init_engine
 from digestify_topics.handlers import STREAM_NAME, dispatcher
-from digestify_topics.outbox_publisher import OutboxPublisher
+from digestify_topics.messaging import OutboxPublisher
 from digestify_topics.queries import HTTPQueries, MockQueries
 from digestify_topics.router import router
-from digestify_topics.settings import get_settings
+from digestify_topics.settings import get_settings, init_settings
 from digestify_topics.stream import (
     dispose_redis,
     get_redis,
@@ -48,6 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    init_settings()
     settings = get_settings()
 
     app = FastAPI(

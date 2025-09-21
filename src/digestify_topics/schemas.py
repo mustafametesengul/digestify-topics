@@ -1,14 +1,7 @@
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
-
-
-class Message(BaseModel):
-    id: str
-    type: str
-    payload: dict[str, Any]
 
 
 class EntityBase(BaseModel):
@@ -35,10 +28,8 @@ class UserRead(EntityBase):
 
 
 class TopicCreated(BaseModel):
-    topic: TopicRead
-    version: int
+    topic_id: UUID
 
 
 class TopicDeleted(BaseModel):
-    id: UUID
-    version: int
+    topic_id: UUID
